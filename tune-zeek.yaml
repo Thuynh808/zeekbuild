@@ -1,0 +1,128 @@
+---
+- name: Tune Zeek sensor on SOC1
+  hosts: soc1
+  vars:
+    zeek_prefix: "/opt/zeek"
+    zeek_interface: "enp1s0"
+    zeek_log_retention_days: 3
+    zeek_min_disk_space_percent: 15
+    rps_sock_flow_entries: 32768
+    rps_cpus_mask: "ffffffff" 
+
+  tasks:
+    - name: Verify Zeek installation directory exists
+      stat:
+        path: "{{ zeek_prefix }}"
+      register: zeek_dir
+
+    - name: Fail if Zeek is not installed under {{ zeek_prefix }}
+      fail:
+        msg: "Zeek does not appear to be installed at {{ zeek_prefix }}. Build/install Zeek first."
+      when: not zeek_dir.stat.exists
+
+    # Zeek config tuning: disk protection, log directory, JSON logs #
+
+    - name: Ensure MinDiskSpace is set to protect disk
+      lineinfile:
+        path: "{{ zeek_prefix }}/etc/zeekctl.cfg"
+        regex: '^MinDiskSpace'
+        line: "MinDiskSpace = {{ zeek_min_disk_space_percent }}"
+        state: present
+        create: no
+
+    - name: Ensure JSON logs are enabled in local.zeek
+      lineinfile:
+        path: "{{ zeek_prefix }}/share/zeek/site/local.zeek"
+        line: '@load policy/tuning/json-logs.zeek'
+        state: present
+        insertafter: EOF
+        create: yes
+
+    - name: Ensure Zeek node.cfg uses the SPAN interface
+      lineinfile:
+        path: "{{ zeek_prefix }}/etc/node.cfg"
+        regex: '^interface='
+        line: "interface={{ zeek_interface }}"
+        state: present
+        backrefs: no
+
+    # Log retention: prune old Zeek logs from spool/logs   #
+
+    - name: Create Zeek log prune script
+      copy:
+        dest: /etc/cron.daily/zeek-log-prune
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          # Prune Zeek logs older than {{ zeek_log_retention_days }} days
+          LOG_DIR="{{ zeek_prefix }}/spool/zeek/logs"
+
+          if [ -d "$LOG_DIR" ]; then
+            find "$LOG_DIR" -mindepth 1 -maxdepth 1 -type d -mtime +{{ zeek_log_retention_days }} -exec rm -rf {} +
+          fi
+
+    # OS and NIC tuning for high packet capture   #
+
+    - name: Install tools for NIC and CPU tuning
+      package:
+        name:
+          - ethtool
+          - kernel-tools
+        state: present
+
+    - name: Set CPU governor to performance
+      command: cpupower frequency-set -g performance
+      register: cpupower_result
+      failed_when: cpupower_result.rc not in [0, 1]
+      changed_when: cpupower_result.rc == 0
+
+    - name: Disable offloading features on Zeek interface (GRO/GSO/LRO/TSO)
+      command: >
+        ethtool -K {{ zeek_interface }}
+        gro off gso off lro off tso off
+      register: offload_result
+      failed_when: offload_result.rc not in [0, 1]
+      changed_when: offload_result.rc == 0
+
+    - name: Increase RX/TX ring buffer sizes for Zeek interface
+      command: ethtool -G {{ zeek_interface }} rx 4096 tx 4096
+      register: ring_result
+      failed_when: ring_result.rc not in [0, 1]
+      changed_when: ring_result.rc == 0
+
+    # Kernel packet steering (RPS/RFS)  #
+
+    - name: Set net.core.rps_sock_flow_entries
+      ansible.builtin.sysctl:
+        name: net.core.rps_sock_flow_entries
+        value: "{{ rps_sock_flow_entries }}"
+        sysctl_set: true
+        state: present
+        reload: true
+
+    - name: Enable RPS on Zeek interface RX queues
+      shell: |
+        for q in /sys/class/net/{{ zeek_interface }}/queues/rx-*; do
+          echo {{ rps_cpus_mask }} > "$q/rps_cpus" 2>/dev/null || true
+        done
+      args:
+        executable: /bin/bash
+
+    # Restart Zeek cleanly with tuning  #
+
+    - name: Reload systemd units (in case unit changed elsewhere)
+      command: systemctl daemon-reload
+
+    - name: Run zeekctl deploy to apply config changes
+      command: "{{ zeek_prefix }}/bin/zeekctl deploy"
+      args:
+        chdir: "{{ zeek_prefix }}"
+      register: zeek_deploy
+      failed_when: zeek_deploy.rc != 0
+
+    - name: Ensure Zeek service is enabled and started
+      service:
+        name: zeek.service
+        state: started
+        enabled: true
+
