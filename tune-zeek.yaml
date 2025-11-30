@@ -27,14 +27,19 @@
         line: "MinDiskSpace = {{ zeek_min_disk_space_percent }}"
         state: present
         create: no
-
-    - name: Ensure JSON logs are enabled in local.zeek
+    
+    - name: Ensure important @load entries are present in local.zeek
       lineinfile:
         path: "{{ zeek_prefix }}/share/zeek/site/local.zeek"
-        line: '@load policy/tuning/json-logs.zeek'
+        line: "{{ item }}"
         state: present
         insertafter: EOF
         create: yes
+      loop:
+        - '@load policy/tuning/json-logs.zeek'
+        - '@load protocols/icmp'
+        - '@load protocols/dhcp'
+        - '@load protocols/snmp'
 
     - name: Ensure Zeek node.cfg uses the SPAN interface
       lineinfile:
