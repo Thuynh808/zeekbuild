@@ -1,6 +1,6 @@
 ---
 - name: Tune Zeek sensor on SOC1
-  hosts: test-rocky10
+  hosts: soc1
   vars:
     zeek_prefix: "/opt/zeek"
     zeek_interface: "enp1s0"

@@ -1,6 +1,6 @@
 ---
 - name: Set up Zeek
-  hosts: test-rocky10
+  hosts: soc1
   become: true
 
   vars:
