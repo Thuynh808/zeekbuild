@@ -1,114 +1,166 @@
 ---
 - name: Set up Zeek
   hosts: test-rocky10
+  become: true
+
+  vars:
+    zeek_version: "8.0.4"
+    zeek_prefix: "/opt/zeek"
+    zeek_src_dir: "/usr/local/src"
+    zeek_tarball: "zeek-{{ zeek_version }}.tar.gz"
+    zeek_url: "https://github.com/zeek/zeek/releases/download/v{{ zeek_version }}/{{ zeek_tarball }}"
+    zeek_src_extract_path: "{{ zeek_src_dir }}/zeek-{{ zeek_version }}"
+
   tasks:
-        
-  - name: install dependencies (required for packet capture)
-    package:
-      name: "{{ item }}"
-      state: present
-    loop:
-      - libpcap
-      - openssl
-      - zlib
-      - python3
-      - tar
+    - name: Install build and runtime dependencies
+      package:
+        name:
+          - gcc
+          - gcc-c++
+          - make
+          - cmake
+          - flex
+          - bison
+          - libpcap
+          - libpcap-devel
+          - openssl
+          - openssl-devel
+          - zlib
+          - zlib-devel
+          - python3
+          - python3-devel
+          - swig
+          - tar
+        state: present
 
-  - name: Open Zeek ports (47760-47762)
-    firewalld:
-      port: "{{ item }}/tcp"
-      permanent: yes
-      state: enabled
-      immediate: yes
-    loop:
-      - 47760
-      - 47761
-      - 47762
+    - name: Open Zeek ports (47760-47762) for future clustering (optional)
+      firewalld:
+        port: "{{ item }}/tcp"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      loop:
+        - 47760
+        - 47761
+        - 47762
 
-  - name: Ensure SSH is allowed
-    firewalld:
-      service: ssh
-      permanent: yes
-      state: enabled
-      immediate: yes
+    - name: Ensure SSH is allowed
+      firewalld:
+        service: ssh
+        permanent: yes
+        state: enabled
+        immediate: yes
 
-  - name: Reload firewalld
-    service:
-      name: firewalld
-      state: restarted
+    - name: Reload firewalld
+      service:
+        name: firewalld
+        state: restarted
 
-  - name: Download Zeek tarball from GitHub Releases
-    get_url:
-      url: https://github.com/zeek/zeek/releases/download/v8.0.4/zeek-8.0.4.tar.gz
-      dest: /tmp/zeek-8.0.4.tar.gz
+    - name: Create Zeek source directory
+      file:
+        path: "{{ zeek_src_dir }}"
+        state: directory
+        mode: "0755"
 
-  - name: Extract Zeek tarball to /usr/local
-    unarchive:
-      src: /tmp/zeek-8.0.4.tar.gz
-      dest: /usr/local
-      remote_src: yes
-      creates: /usr/local/zeek/bin/zeek
+    - name: Download Zeek tarball from GitHub Releases
+      get_url:
+        url: "{{ zeek_url }}"
+        dest: "{{ zeek_src_dir }}/{{ zeek_tarball }}"
+        mode: "0644"
 
-  - name: Add Zeek to PATH
-    lineinfile:
-      path: /root/.bashrc
-      line: 'export PATH=/usr/local/zeek/bin:$PATH'
-      state: present
+    - name: Extract Zeek tarball
+      unarchive:
+        src: "{{ zeek_src_dir }}/{{ zeek_tarball }}"
+        dest: "{{ zeek_src_dir }}"
+        remote_src: yes
+        creates: "{{ zeek_src_extract_path }}"
 
-  - name: Source .bashrc to apply the new path
-    shell: source ~/.bashrc
+    - name: Configure Zeek
+      command: ./configure --prefix={{ zeek_prefix }}
+      args:
+        chdir: "{{ zeek_src_extract_path }}"
+        creates: "{{ zeek_prefix }}/bin/zeek"
 
-  - name: edit node.cfg
-    lineinfile:
-      path: /usr/local/zeek/etc/node.cfg
-      regex: '^interface='
-      line: interface={{ ansible_default_ipv4['interface'] }}
-      
-  - name: edit local.zeek file
-    lineinfile:
-      path: /usr/local/zeek/share/zeek/site/local.zeek
-      line: '@load policy/tuning/json-logs.zeek'
+    - name: Compile Zeek
+      command: make -j {{ ansible_processor_vcpus | default(2) }}
+      args:
+        chdir: "{{ zeek_src_extract_path }}"
+        creates: "{{ zeek_prefix }}/bin/zeek"
 
-  - name: edit zeekctl.cfg
-    lineinfile:
-      path: /usr/local/zeek/etc/zeekctl.cfg
-      regex: "{{ item.regex }}"
-      line: "{{ item.line }}"
-    loop:
-      - regex: '^MailConnectionSummary'
-        line: "MailConnectionSummary = 0"
-      - regex: '^MinDiskSpace'
-        line: "MinDiskSpace = 0"
-      - regex: '^MailHostUpDown'
-        line: "MailHostUpDown = 0"
+    - name: Install Zeek
+      command: make install
+      args:
+        chdir: "{{ zeek_src_extract_path }}"
+        creates: "{{ zeek_prefix }}/bin/zeek"
 
-  - name: create systemd service for zeek
-    copy:
-      content: |
-        [Unit]
-        Description=Zeek Network Security Monitor
-        After=network.target
+    - name: Add Zeek to PATH for all users
+      copy:
+        dest: /etc/profile.d/zeek.sh
+        mode: "0644"
+        content: |
+          export PATH={{ zeek_prefix }}/bin:$PATH
 
-        [Service]
-        Type=forking
-        ExecStart=/usr/local/zeek/bin/zeekctl start
-        ExecStop=/usr/local/zeek/bin/zeekctl stop
-        ExecReload=/usr/local/zeek/bin/zeekctl deploy
-        Restart=on-failure
-        RestartSec=5
 
-        [Install]
-        WantedBy=multi-user.target
-      dest: /etc/systemd/system/zeek.service
-  
-  - name: enable zeek
-    service:
-      name: zeek.service
-      state: stopped
-      enabled: true
+    - name: Ensure node.cfg exists with basic standalone config
+      blockinfile:
+        path: "{{ zeek_prefix }}/etc/node.cfg"
+        create: true
+        block: |
+          [zeek]
+          type=standalone
+          host=localhost
+          interface={{ ansible_interfaces.2 }}
 
-  - name: deploy zeek
-    shell: 'zeekctl deploy'
-    
-  - name: start zeek
-    shell: 'zeekctl start'
+    - name: Enable JSON logs in local.zeek
+      lineinfile:
+        path: "{{ zeek_prefix }}/share/zeek/site/local.zeek"
+        line: '@load policy/tuning/json-logs.zeek'
+        state: present
+        insertafter: EOF
+
+    - name: Tune zeekctl.cfg
+      lineinfile:
+        path: "{{ zeek_prefix }}/etc/zeekctl.cfg"
+        regex: "{{ item.regex }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regex: '^MailConnectionSummary', line: 'MailConnectionSummary = 0' }
+        - { regex: '^MinDiskSpace',        line: 'MinDiskSpace = 0' }
+        - { regex: '^MailHostUpDown',      line: 'MailHostUpDown = 0' }
+
+    - name: Create systemd service for Zeek
+      copy:
+        content: |
+          [Unit]
+          Description=Zeek Network Security Monitor
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=forking
+          ExecStart={{ zeek_prefix }}/bin/zeekctl start
+          ExecStop={{ zeek_prefix }}/bin/zeekctl stop
+          ExecReload={{ zeek_prefix }}/bin/zeekctl deploy
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/zeek.service
+        mode: "0644"
+
+    - name: Reload systemd units
+      command: systemctl daemon-reload
+
+    - name: Run initial zeekctl deploy
+      command: "{{ zeek_prefix }}/bin/zeekctl deploy"
+      args:
+        chdir: "{{ zeek_prefix }}"
+
+    - name: Enable and start Zeek service
+      service:
+        name: zeek.service
+        state: started
+        enabled: true
+
