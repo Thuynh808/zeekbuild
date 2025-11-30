@@ -70,12 +70,6 @@
           - kernel-tools
         state: present
 
-    - name: Set CPU governor to performance
-      command: cpupower frequency-set -g performance
-      register: cpupower_result
-      failed_when: cpupower_result.rc not in [0, 1]
-      changed_when: cpupower_result.rc == 0
-
     - name: Disable offloading features on Zeek interface (GRO/GSO/LRO/TSO)
       command: >
         ethtool -K {{ zeek_interface }}
@@ -89,24 +83,6 @@
       register: ring_result
       failed_when: ring_result.rc not in [0, 1]
       changed_when: ring_result.rc == 0
-
-    # Kernel packet steering (RPS/RFS)  #
-
-    - name: Set net.core.rps_sock_flow_entries
-      ansible.builtin.sysctl:
-        name: net.core.rps_sock_flow_entries
-        value: "{{ rps_sock_flow_entries }}"
-        sysctl_set: true
-        state: present
-        reload: true
-
-    - name: Enable RPS on Zeek interface RX queues
-      shell: |
-        for q in /sys/class/net/{{ zeek_interface }}/queues/rx-*; do
-          echo {{ rps_cpus_mask }} > "$q/rps_cpus" 2>/dev/null || true
-        done
-      args:
-        executable: /bin/bash
 
     # Restart Zeek cleanly with tuning  #
 
