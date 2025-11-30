@@ -1,13 +1,11 @@
 ---
 - name: Tune Zeek sensor on SOC1
-  hosts: soc1
+  hosts: test-rocky10
   vars:
     zeek_prefix: "/opt/zeek"
-    zeek_interface: "enp1s0"
+    zeek_interface: "ens19"
     zeek_log_retention_days: 3
     zeek_min_disk_space_percent: 15
-    rps_sock_flow_entries: 32768
-    rps_cpus_mask: "ffffffff" 
 
   tasks:
     - name: Verify Zeek installation directory exists
@@ -77,12 +75,6 @@
       register: offload_result
       failed_when: offload_result.rc not in [0, 1]
       changed_when: offload_result.rc == 0
-
-    - name: Increase RX/TX ring buffer sizes for Zeek interface
-      command: ethtool -G {{ zeek_interface }} rx 4096 tx 4096
-      register: ring_result
-      failed_when: ring_result.rc not in [0, 1]
-      changed_when: ring_result.rc == 0
 
     # Restart Zeek cleanly with tuning  #
 
