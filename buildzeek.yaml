@@ -10,8 +10,19 @@
     zeek_tarball: "zeek-{{ zeek_version }}.tar.gz"
     zeek_url: "https://github.com/zeek/zeek/releases/download/v{{ zeek_version }}/{{ zeek_tarball }}"
     zeek_src_extract_path: "{{ zeek_src_dir }}/zeek-{{ zeek_version }}"
+    zeek_interface: "{{ ansible_interfaces[2] }}"
 
   tasks:
+    - name: Install dnf plugins core (for config-manager)
+      package:
+        name: dnf-plugins-core
+        state: present
+
+    - name: Enable CRB repo (required for -devel packages)
+      command: dnf config-manager --set-enabled crb
+      args:
+        warn: false
+
     - name: Install build and runtime dependencies
       package:
         name:
@@ -100,7 +111,6 @@
         content: |
           export PATH={{ zeek_prefix }}/bin:$PATH
 
-
     - name: Ensure node.cfg exists with basic standalone config
       blockinfile:
         path: "{{ zeek_prefix }}/etc/node.cfg"
@@ -109,7 +119,7 @@
           [zeek]
           type=standalone
           host=localhost
-          interface={{ ansible_interfaces.2 }}
+          interface={{ zeek_interface }}
 
     - name: Enable JSON logs in local.zeek
       lineinfile:
