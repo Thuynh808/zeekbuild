@@ -3,7 +3,7 @@
   hosts: test-rocky10
   vars:
     zeek_prefix: "/opt/zeek"
-    zeek_interface: "ens19"
+    zeek_interface: "enp1s0"
     zeek_log_retention_days: 3
     zeek_min_disk_space_percent: 15
 
