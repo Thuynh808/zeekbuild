@@ -37,7 +37,6 @@
         create: yes
       loop:
         - '@load policy/tuning/json-logs.zeek'
-        - '@load protocols/icmp'
         - '@load protocols/dhcp'
         - '@load protocols/snmp'
 
