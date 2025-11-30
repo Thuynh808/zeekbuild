@@ -115,16 +115,12 @@
         mode: "0644"
         content: |
           export PATH={{ zeek_prefix }}/bin:$PATH
-
-    - name: Ensure node.cfg exists with basic standalone config
-      blockinfile:
+    
+    - name: node.cfg
+      lineinfile:
         path: "{{ zeek_prefix }}/etc/node.cfg"
-        create: true
-        block: |
-          [zeek]
-          type=standalone
-          host=localhost
-          interface={{ zeek_interface }}
+        regexp: '^interface='
+        line: "interface={{ zeek_interface }}"
 
     - name: Enable JSON logs in local.zeek
       lineinfile:
