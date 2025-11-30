@@ -153,6 +153,7 @@
           ExecStart={{ zeek_prefix }}/bin/zeekctl start
           ExecStop={{ zeek_prefix }}/bin/zeekctl stop
           ExecReload={{ zeek_prefix }}/bin/zeekctl deploy
+          RemainAfterExit=yes
           Restart=on-failure
           RestartSec=5
 
