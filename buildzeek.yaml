@@ -21,6 +21,11 @@
     - name: Enable CRB repo (required for -devel packages)
       command: dnf config-manager --set-enabled crb
 
+    - name: Ensure EPEL repo is installed (for zeromq packages)
+      package:
+        name: epel-release
+        state: present
+
     - name: Install build and runtime dependencies
       package:
         name:
@@ -40,6 +45,8 @@
           - python3-devel
           - swig
           - tar
+          - zeromq
+          - zeromq-devel
         state: present
 
     - name: Open Zeek ports (47760-47762) for future clustering (optional)
