@@ -20,8 +20,6 @@
 
     - name: Enable CRB repo (required for -devel packages)
       command: dnf config-manager --set-enabled crb
-      args:
-        warn: false
 
     - name: Install build and runtime dependencies
       package:
