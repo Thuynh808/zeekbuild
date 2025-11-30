@@ -22,7 +22,7 @@ vim inventory
 - **Build Zeek**
 
 ```bash
-ansible-playbook zeekbuild.yaml -vv
+ansible-playbook buildzeek.yaml -vv
 ```
 
 - **Tune Zeek**
