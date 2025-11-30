@@ -4,7 +4,7 @@
 
 ```bash
 git clone -b build https://github.com/thuynh808/zeekbuild
-cd mon1theus
+cd zeekbuild
 ```
 
 - **Configure inventory `hosts`**

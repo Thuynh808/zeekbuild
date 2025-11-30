@@ -7,3 +7,4 @@ localhost ansible_host=10.2.22.4 ansible_fqdn=ans1.lab.streetrack.org ansible_ho
 #jump01 ansible_host=10.2.22.3
 soc1 ansible_host=10.2.22.50
 #nas1 ansible_host=10.2.22.34
+test-rocky10 ansible_host=10.2.22.66
