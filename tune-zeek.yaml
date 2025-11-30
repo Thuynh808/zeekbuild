@@ -37,8 +37,6 @@
         create: yes
       loop:
         - '@load policy/tuning/json-logs.zeek'
-        - '@load protocols/dhcp'
-        - '@load protocols/snmp'
 
     - name: Ensure Zeek node.cfg uses the SPAN interface
       lineinfile:
