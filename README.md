@@ -50,7 +50,8 @@ docker exec -it kib01 bin/kibana-verification-code
 
   - Paste into `fleet_server.yaml` playbook
 
-- **Deploy fleet server container **
+- **Deploy fleet server container**
+
 ```bash
 ansible-playbook fleet_server.yaml -vv
 ```
