@@ -1,0 +1,73 @@
+---
+- name: Run Fleet Server as Elastic Agent container
+  hosts: test-rocky10        # change to soc1 later
+  become: true
+
+  vars:
+    elastic_stack_version: "9.2.2"
+    elastic_agent_image: "docker.elastic.co/elastic-agent/elastic-agent:{{ elastic_stack_version }}"
+
+    # Elasticsearch host as seen by the container
+    fleet_server_es_host: "https://es01:9200"   # es01 on the "elastic" Docker network
+
+    # Fleet Server listen port
+    fleet_server_port: 8220
+
+    fleet_state_dir: "/srv/elastic/fleet-state"
+
+    # URL other agents will use to reach Fleet Server
+    fleet_url: "10.2.22.66:8220"      # later: http://soc1.lab.streetrack.org:8220
+
+    # <<< FILL THESE FROM FLEET UI >>>
+    fleet_server_service_token: "PASTE_SERVICE_TOKEN"
+    fleet_server_policy_id: "fleet-server-policy"   # e.g. fleet-server-policy
+
+  pre_tasks:
+    - name: Ensure Python docker SDK is installed
+      ansible.builtin.pip:
+        name: docker
+        state: present
+
+  tasks:
+    - name: Ensure elastic Docker network exists
+      community.docker.docker_network:
+        name: elastic
+        state: present
+
+    - name: Pull Elastic Agent image (server flavor)
+      community.docker.docker_image:
+        name: "{{ elastic_agent_image }}"
+        source: pull
+
+    - name: Ensure Fleet state directory exists
+      ansible.builtin.file:
+        path: "{{ fleet_state_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Run Fleet Server container (fleet01)
+      community.docker.docker_container:
+        name: fleet01
+        hostname: "fleet01"
+        image: "{{ elastic_agent_image }}"
+        state: started
+        recreate: false
+        restart_policy: unless-stopped
+        networks:
+          - name: elastic
+        published_ports:
+          - "{{ fleet_server_port }}:{{ fleet_server_port }}"
+        volumes:
+          - "{{ fleet_state_dir }}:/state"
+        env:
+          FLEET_SERVER_ENABLE: "true"
+          FLEET_SERVER_ELASTICSEARCH_HOST: "{{ fleet_server_es_host }}"
+          FLEET_SERVER_SERVICE_TOKEN: "{{ fleet_server_service_token }}"
+          FLEET_SERVER_POLICY_ID: "{{ fleet_server_policy_id }}"
+          FLEET_SERVER_ELASTICSEARCH_INSECURE: "true"
+
+          FLEET_URL: "{{ fleet_url }}"
+          STATE_PATH: "/state"
+

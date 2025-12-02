@@ -82,6 +82,7 @@
     - name: Run Elasticsearch container (es01) - fresh single node
       community.docker.docker_container:
         name: es01
+        hostname: "es01"
         image: "docker.elastic.co/elasticsearch/elasticsearch:{{ elastic_stack_version }}"
         state: started
         recreate: true        # force new container
@@ -197,6 +198,7 @@
     - name: Run Kibana container (kib01)
       community.docker.docker_container:
         name: kib01
+        hostname: "kib01"
         image: "docker.elastic.co/kibana/kibana:{{ elastic_stack_version }}"
         state: started
         recreate: true
