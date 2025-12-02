@@ -30,3 +30,22 @@ ansible-playbook buildzeek.yaml -vv
 ```bash
 ansible-playbook tune-zeek.yaml -vv
 ```
+
+- **Deploy ElasticSearch and Kibana Containers**
+
+```bash
+ansible-playbook deploy_elastic.yaml -vv
+```
+
+- **Configure Elastic/Kibana**
+
+```bash
+ansible-playbook _____.yaml -vv
+```
+
+- **sdfjklsdfjk**
+
+```bash
+ansible-playbook _____.yaml -vv
+```
+

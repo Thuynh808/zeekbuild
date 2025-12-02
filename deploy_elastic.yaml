@@ -1,0 +1,182 @@
+---
+- name: Deploy single-node Elasticsearch + Kibana on SOC1 (fresh install)
+  hosts: test-rocky10
+  become: true
+  vars:
+    elastic_stack_version: "9.2.2"
+
+    # Host directories
+    elastic_data_dir: "/srv/elastic/data"
+    elastic_logs_dir: "/srv/elastic/logs"
+    elastic_ca_path: "/srv/elastic/http_ca.crt"
+
+    # Docker resource limits
+    es_mem_limit: "12g"     # container limit
+    kibana_mem_limit: "2g"
+
+    # JVM heap inside Elasticsearch
+    es_heap_size: "8g"
+
+  pre_tasks:
+    - name: Ensure Python docker SDK is installed
+      ansible.builtin.pip:
+        name: docker
+        state: present
+
+    - name: Ensure vm.max_map_count is set for Elasticsearch
+      ansible.posix.sysctl:
+        name: vm.max_map_count
+        value: "262144"
+        state: present
+        reload: yes
+
+  tasks:
+    # --- Fresh install cleanup (danger: wipes any existing ES data) ---
+    - name: Remove existing Elasticsearch container es01 (if present)
+      community.docker.docker_container:
+        name: es01
+        state: absent
+
+    - name: Remove existing Kibana container kib01 (if present)
+      community.docker.docker_container:
+        name: kib01
+        state: absent
+
+    - name: Remove existing Elasticsearch data dir for fresh auto-config
+      ansible.builtin.file:
+        path: "{{ elastic_data_dir }}"
+        state: absent
+
+    - name: Remove existing Elasticsearch logs dir (optional)
+      ansible.builtin.file:
+        path: "{{ elastic_logs_dir }}"
+        state: absent
+
+    # --- Recreate directories ---
+
+    - name: Ensure Elasticsearch data dir exists
+      ansible.builtin.file:
+        path: "{{ elastic_data_dir }}"
+        state: directory
+        owner: 1000          # default elasticsearch user inside container
+        group: 1000
+        mode: "0755"
+
+    - name: Ensure Elasticsearch logs dir exists
+      ansible.builtin.file:
+        path: "{{ elastic_logs_dir }}"
+        state: directory
+        owner: 1000
+        group: 1000
+        mode: "0755"
+
+    # --- Network ---
+
+    - name: Ensure elastic Docker network exists
+      community.docker.docker_network:
+        name: elastic
+        state: present
+
+    # --- Elasticsearch container ---
+
+    - name: Run Elasticsearch container (es01) - fresh single node
+      community.docker.docker_container:
+        name: es01
+        image: "docker.elastic.co/elasticsearch/elasticsearch:{{ elastic_stack_version }}"
+        state: started
+        recreate: true        # force new container
+        restart_policy: unless-stopped
+        networks:
+          - name: elastic
+        published_ports:
+          - "9200:9200"
+        volumes:
+          - "{{ elastic_data_dir }}:/usr/share/elasticsearch/data"
+          - "{{ elastic_logs_dir }}:/usr/share/elasticsearch/logs"
+        env:
+          # Don't touch security flags so auto-config can run
+          discovery.type: "single-node"
+          ES_JAVA_OPTS: "-Xms{{ es_heap_size }} -Xmx{{ es_heap_size }}"
+        memory: "{{ es_mem_limit }}"
+
+    - name: Wait for Elasticsearch HTTPS API to respond
+      ansible.builtin.uri:
+        url: "https://localhost:9200"
+        method: GET
+        validate_certs: false
+        status_code: [200, 401]   # tell Ansible these are OK
+      register: es_health
+      until: es_health.status is defined and es_health.status in [200, 401]
+      retries: 40
+      delay: 5
+      failed_when: false          # don’t hard-fail on 401 while looping
+
+    # --- Grab CA cert from inside container ---
+
+    - name: Read http_ca.crt from container
+      community.docker.docker_container_exec:
+        container: es01
+        command: "cat /usr/share/elasticsearch/config/certs/http_ca.crt"
+      register: ca_content
+      changed_when: false
+
+    - name: Write http_ca.crt to host
+      ansible.builtin.copy:
+        dest: "{{ elastic_ca_path }}"
+        content: "{{ ca_content.stdout }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    # --- Password + enrollment token ---
+
+    - name: Reset elastic password (if needed) and capture it
+      community.docker.docker_container_exec:
+        container: es01
+        command: "/usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -b"
+      register: reset_pwd
+      changed_when: false
+
+    - name: Extract elastic password from command output
+      ansible.builtin.set_fact:
+        elastic_password: "{{ reset_pwd.stdout | regex_search('New value: (.*)', '\\1') | default('') }}"
+
+    - name: Create Kibana enrollment token
+      community.docker.docker_container_exec:
+        container: es01
+        command: "/usr/share/elasticsearch/bin/elasticsearch-create-enrollment-token -s kibana"
+      register: kibana_token_raw
+      changed_when: false
+
+    - name: Set Kibana enrollment token fact
+      ansible.builtin.set_fact:
+        kibana_enrollment_token: "{{ kibana_token_raw.stdout | trim }}"
+
+    # --- Kibana container ---
+
+    - name: Run Kibana container (kib01)
+      community.docker.docker_container:
+        name: kib01
+        image: "docker.elastic.co/kibana/kibana:{{ elastic_stack_version }}"
+        state: started
+        recreate: true
+        restart_policy: unless-stopped
+        networks:
+          - name: elastic
+        published_ports:
+          - "5601:5601"
+        memory: "{{ kibana_mem_limit }}"
+
+    # --- Summary output ---
+
+    - name: Show credentials and enrollment info
+      ansible.builtin.debug:
+        msg:
+          - "Elastic HTTPS endpoint: https://{{ inventory_hostname }}:9200"
+          - "Kibana URL:          http://{{ inventory_hostname }}:5601"
+          - "CA certificate path on host: {{ elastic_ca_path }}"
+          - "Elastic username:    elastic"
+          - "Elastic password:    {{ elastic_password }}"
+          - "Kibana enrollment token:"
+          - "{{ kibana_enrollment_token }}"
+
