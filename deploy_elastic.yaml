@@ -152,6 +152,46 @@
       ansible.builtin.set_fact:
         kibana_enrollment_token: "{{ kibana_token_raw.stdout | trim }}"
 
+    # --- Generate Kibana encryption keys via one-off container ---
+
+    - name: Generate Kibana encryption keys (one-off container)
+      ansible.builtin.shell: >
+        docker run --rm
+        docker.elastic.co/kibana/kibana:{{ elastic_stack_version }}
+        /usr/share/kibana/bin/kibana-encryption-keys generate
+      register: kibana_keys_raw
+      changed_when: false
+
+    - name: Save raw Kibana encryption keys to file (for reference)
+      ansible.builtin.copy:
+        dest: /root/kibana_keys.yaml
+        content: "{{ kibana_keys_raw.stdout }}"
+        mode: "0600"
+
+    - name: Parse Kibana encryption keys into facts
+      ansible.builtin.set_fact:
+        xpack_encryptedSavedObjects_encryptionKey: >-
+          {{ kibana_keys_raw.stdout
+             | regex_search('xpack\.encryptedSavedObjects\.encryptionKey: .*$', multiline=True)
+             | default('', true)
+             | regex_replace('^.*: ', '')
+             | trim
+             | string }}
+        xpack_security_encryptionKey: >-
+          {{ kibana_keys_raw.stdout
+             | regex_search('xpack\.security\.encryptionKey: .*$', multiline=True)
+             | default('', true)
+             | regex_replace('^.*: ', '')
+             | trim
+             | string }}
+        xpack_reporting_encryptionKey: >-
+          {{ kibana_keys_raw.stdout
+             | regex_search('xpack\.reporting\.encryptionKey: .*$', multiline=True)
+             | default('', true)
+             | regex_replace('^.*: ', '')
+             | trim
+             | string }}
+
     # --- Kibana container ---
 
     - name: Run Kibana container (kib01)
@@ -166,6 +206,11 @@
         published_ports:
           - "5601:5601"
         memory: "{{ kibana_mem_limit }}"
+        env:
+          # Encryption keys Kibana/Fleet requires
+          XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "{{ xpack_encryptedSavedObjects_encryptionKey }}"
+          XPACK_SECURITY_ENCRYPTIONKEY: "{{ xpack_security_encryptionKey }}"
+          XPACK_REPORTING_ENCRYPTIONKEY: "{{ xpack_reporting_encryptionKey }}"
 
     # --- Summary output ---
 
@@ -179,4 +224,9 @@
           - "Elastic password:    {{ elastic_password }}"
           - "Kibana enrollment token:"
           - "{{ kibana_enrollment_token }}"
-
+      register: output
+    
+    - name: output to file
+      copy:
+        dest: /root/output
+        content: "{{ output }}"
