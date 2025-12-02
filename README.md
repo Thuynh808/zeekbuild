@@ -39,13 +39,19 @@ ansible-playbook deploy_elastic.yaml -vv
 
 - **Configure Elastic/Kibana**
 
+  - Enroll with token through UI
+  - Run command on soc1 to retrieve verification code
+
 ```bash
-ansible-playbook _____.yaml -vv
+docker exec -it kib01 bin/kibana-verification-code
 ```
 
-- **sdfjklsdfjk**
+- **Retrieve service token fleet server through UI**
 
+  - Paste into `fleet_server.yaml` playbook
+
+- **Deploy fleet server container **
 ```bash
-ansible-playbook _____.yaml -vv
+ansible-playbook fleet_server.yaml -vv
 ```
 
