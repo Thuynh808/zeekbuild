@@ -219,8 +219,8 @@
     - name: Show credentials and enrollment info
       ansible.builtin.debug:
         msg:
-          - "Elastic HTTPS endpoint: https://{{ inventory_hostname }}:9200"
-          - "Kibana URL:          http://{{ inventory_hostname }}:5601"
+          - "Elastic HTTPS endpoint: https://{{ ansible_host }}:9200"
+          - "Kibana URL:          http://{{ ansible_host }}:5601"
           - "CA certificate path on host: {{ elastic_ca_path }}"
           - "Elastic username:    elastic"
           - "Elastic password:    {{ elastic_password }}"
