@@ -45,6 +45,11 @@ ansible-playbook deploy_elastic.yaml -vv
 ```bash
 docker exec -it kib01 bin/kibana-verification-code
 ```
+- **Update pw for policy playbook**
+
+```bash
+vim policies_default.yaml
+```
 
 - **Create default policies and integrations for fleet server**
 
