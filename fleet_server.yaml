@@ -8,7 +8,7 @@
     elastic_agent_image: "docker.elastic.co/elastic-agent/elastic-agent:{{ elastic_stack_version }}"
 
     # Elasticsearch host as seen by the container
-    fleet_server_es_host: "https://es01:9200"   # es01 on the "elastic" Docker network
+    fleet_server_es_host: "https://10.2.22.50:9200"   # es01 on the "elastic" Docker network
 
     # Fleet Server listen port
     fleet_server_port: 8220
