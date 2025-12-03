@@ -1,6 +1,6 @@
 ---
 - name: Deploy single-node Elasticsearch + Kibana on SOC1 (fresh install)
-  hosts: test-rocky10
+  hosts: soc1
   become: true
   vars:
     elastic_stack_version: "9.2.2"
@@ -58,7 +58,7 @@
       ansible.builtin.file:
         path: "{{ elastic_data_dir }}"
         state: directory
-        owner: 1000          # default elasticsearch user inside container
+        owner: 1000       
         group: 1000
         mode: "0755"
 

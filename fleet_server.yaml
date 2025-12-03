@@ -1,6 +1,6 @@
 ---
 - name: Run Fleet Server as Elastic Agent container
-  hosts: test-rocky10        # change to soc1 later
+  hosts: soc1
   become: true
 
   vars:
@@ -16,11 +16,11 @@
     fleet_state_dir: "/srv/elastic/fleet-state"
 
     # URL other agents will use to reach Fleet Server
-    fleet_url: "10.2.22.66:8220"      # later: http://soc1.lab.streetrack.org:8220
+    fleet_url: "10.2.22.50:8220"      # http://soc1.lab.streetrack.org:8220
 
     # <<< FILL THESE FROM FLEET UI >>>
-    fleet_server_service_token: "AAEAAWVsYXN0aWMvZmxlZXQtc2VydmVyL3Rva2VuLTE3NjQ3MjkzMDQ5MDY6Ull4SUJDVXlTVkt0WXdJTTRfUEtaQQ"
-    fleet_server_policy_id: "fleet-server-policy"   # e.g. fleet-server-policy
+    fleet_server_service_token: "REPLACE_WITH_TOKEN"
+    fleet_server_policy_id: "fleet-server-policy"
 
   pre_tasks:
     - name: Ensure Python docker SDK is installed

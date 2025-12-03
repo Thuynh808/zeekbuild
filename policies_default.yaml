@@ -1,15 +1,14 @@
 ---
 - name: Create base Fleet agent policies and package policies
-  hosts: test-rocky10        # <- your SOC1 host / Kibana host
+  hosts: soc1
   become: true
   vars:
     kibana_base_url: "http://10.2.22.66:5601"
-    # Set this in group_vars, vault, or via -e "elastic_password=..."
+    # UPDATE ELASTIC PASSWORD
     elastic_password: "h6g7cT-XDSXmdybg8IfV"
 
   tasks:
     - name: Create Fleet Server agent policy
-    # idempotent-ish: 200 on create, 409 if it already exists
       ansible.builtin.uri:
         url: "{{ kibana_base_url }}/api/fleet/agent_policies"
         method: POST
