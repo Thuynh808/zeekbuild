@@ -3,9 +3,9 @@
   hosts: soc1
   become: true
   vars:
-    kibana_base_url: "http://10.2.22.66:5601"
+    kibana_base_url: "http://10.2.22.50:5601"
     # UPDATE ELASTIC PASSWORD
-    elastic_password: "h6g7cT-XDSXmdybg8IfV"
+    elastic_password: "7Uh1S2xO2hZd6Nckw_Dz"
 
   tasks:
     - name: Create Fleet Server agent policy
