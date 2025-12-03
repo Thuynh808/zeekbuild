@@ -19,7 +19,7 @@
     fleet_url: "10.2.22.66:8220"      # later: http://soc1.lab.streetrack.org:8220
 
     # <<< FILL THESE FROM FLEET UI >>>
-    fleet_server_service_token: "PASTE_SERVICE_TOKEN"
+    fleet_server_service_token: "AAEAAWVsYXN0aWMvZmxlZXQtc2VydmVyL3Rva2VuLTE3NjQ3MjkzMDQ5MDY6Ull4SUJDVXlTVkt0WXdJTTRfUEtaQQ"
     fleet_server_policy_id: "fleet-server-policy"   # e.g. fleet-server-policy
 
   pre_tasks:
