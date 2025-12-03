@@ -1,0 +1,313 @@
+---
+- name: Create base Fleet agent policies and package policies
+  hosts: test-rocky10        # <- your SOC1 host / Kibana host
+  become: true
+  vars:
+    kibana_base_url: "http://10.2.22.66:5601"
+    # Set this in group_vars, vault, or via -e "elastic_password=..."
+    elastic_password: "h6g7cT-XDSXmdybg8IfV"
+
+  tasks:
+    - name: Create Fleet Server agent policy
+    # idempotent-ish: 200 on create, 409 if it already exists
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/agent_policies"
+        method: POST
+        headers:
+          kbn-xsrf: "true"
+          Content-Type: "application/json"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "Fleet Server policy"
+          id: "fleet-server-policy"
+          namespace: "soc"
+          description: "Fleet Server control plane for SOC1"
+        status_code: [200, 409]
+        validate_certs: false
+      register: fleet_server_policy
+
+    - name: Create SOC1 Zeek sensor policy
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/agent_policies"
+        method: POST
+        headers:
+          kbn-xsrf: "true"
+          Content-Type: "application/json"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "SOC1 Zeek sensor policy"
+          id: "soc1-zeek-policy"
+          namespace: "soc"
+          description: "Zeek sensor policy for SOC1 host"
+        status_code: [200, 409]
+        validate_certs: false
+      register: soc1_zeek_policy
+
+    - name: Create SOC1 system policy (host logs + metrics)
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/agent_policies"
+        method: POST
+        headers:
+          kbn-xsrf: "true"
+          Content-Type: "application/json"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "SOC1 system policy"
+          id: "soc1-system-policy"
+          namespace: "soc"
+          description: "SOC1 host logs and metrics"
+        status_code: [200, 409]
+        validate_certs: false
+      register: soc1_system_policy
+
+    - name: Create Linux core policy
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/agent_policies"
+        method: POST
+        headers:
+          kbn-xsrf: "true"
+          Content-Type: "application/json"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "Linux core policy"
+          id: "linux-core-policy"
+          namespace: "lab"
+          description: "Baseline Linux logs + metrics for lab VMs"
+        status_code: [200, 409]
+        validate_certs: false
+      register: linux_core_policy
+
+    - name: Create Windows core policy
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/agent_policies"
+        method: POST
+        headers:
+          kbn-xsrf: "true"
+          Content-Type: "application/json"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "Windows core policy"
+          id: "windows-core-policy"
+          namespace: "windows"
+          description: "Baseline Windows logs for future advanced policy"
+        status_code: [200, 409]
+        validate_certs: false
+      register: windows_core_policy
+
+    #################################################################
+    # 1) Discover current package versions from EPM (no "latest")
+    #################################################################
+
+    - name: Get fleet_server package info
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/epm/packages/fleet_server"
+        method: GET
+        headers:
+          kbn-xsrf: "true"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      register: fleet_server_pkg_info
+
+    - name: Get system package info
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/epm/packages/system"
+        method: GET
+        headers:
+          kbn-xsrf: "true"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      register: system_pkg_info
+
+    - name: Get zeek package info
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/epm/packages/zeek"
+        method: GET
+        headers:
+          kbn-xsrf: "true"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      register: zeek_pkg_info
+
+    - name: Get winlog package info
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/epm/packages/winlog"
+        method: GET
+        headers:
+          kbn-xsrf: "true"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      register: winlog_pkg_info
+
+    - name: Set package version facts
+      ansible.builtin.set_fact:
+        fleet_server_pkg_version: "{{ fleet_server_pkg_info.json.item.version }}"
+        system_pkg_version: "{{ system_pkg_info.json.item.version }}"
+        zeek_pkg_version: "{{ zeek_pkg_info.json.item.version }}"
+        winlog_pkg_version: "{{ winlog_pkg_info.json.item.version }}"
+
+    # Optional: see what versions you’re actually using
+    - name: Debug resolved package versions
+      ansible.builtin.debug:
+        msg:
+          - "fleet_server version: {{ fleet_server_pkg_version }}"
+          - "system version:       {{ system_pkg_version }}"
+          - "zeek version:         {{ zeek_pkg_version }}"
+          - "winlog version:       {{ winlog_pkg_version }}"
+
+    #################################################################
+    # 2) Create package policies (integrations) on existing policies
+    #################################################################
+
+    - name: Attach fleet_server integration to Fleet Server policy
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/package_policies"
+        method: POST
+        headers:
+          kbn-xsrf: "true"
+          Content-Type: "application/json"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "fleet-server-1"
+          namespace: "soc"
+          policy_id: "fleet-server-policy"
+          package:
+            name: "fleet_server"
+            version: "{{ fleet_server_pkg_version }}"
+        status_code: [200, 409]
+        validate_certs: false
+      register: fleet_server_pkg
+
+    - name: Attach system integration to SOC1 system policy
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/package_policies"
+        method: POST
+        headers:
+          kbn-xsrf: "true"
+          Content-Type: "application/json"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "soc1-system-logs-metrics"
+          namespace: "soc"
+          policy_id: "soc1-system-policy"
+          package:
+            name: "system"
+            version: "{{ system_pkg_version }}"
+        status_code: [200, 409]
+        validate_certs: false
+      register: soc1_system_pkg
+
+    - name: Attach zeek integration to SOC1 Zeek sensor policy
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/package_policies"
+        method: POST
+        headers:
+          kbn-xsrf: "true"
+          Content-Type: "application/json"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "soc1-zeek"
+          namespace: "soc"
+          policy_id: "soc1-zeek-policy"
+          package:
+            name: "zeek"
+            version: "{{ zeek_pkg_version }}"
+        status_code: [200, 409]
+        validate_certs: false
+      register: soc1_zeek_pkg
+
+    - name: Attach system integration to Linux core policy
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/package_policies"
+        method: POST
+        headers:
+          kbn-xsrf: "true"
+          Content-Type: "application/json"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "linux-core-system"
+          namespace: "lab"
+          policy_id: "linux-core-policy"
+          package:
+            name: "system"
+            version: "{{ system_pkg_version }}"
+        status_code: [200, 409]
+        validate_certs: false
+      register: linux_core_pkg
+
+    - name: Attach winlog integration to Windows core policy
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/fleet/package_policies"
+        method: POST
+        headers:
+          kbn-xsrf: "true"
+          Content-Type: "application/json"
+        user: "elastic"
+        password: "{{ elastic_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "windows-core-winlog"
+          namespace: "windows"
+          policy_id: "windows-core-policy"
+          package:
+            name: "winlog"
+            version: "{{ winlog_pkg_version }}"
+          inputs:
+            winlogs-winlog:
+              enabled: true
+              streams:
+                winlog.winlogs:
+                  enabled: true
+                  vars:
+                    channel:
+                      - "Application"
+                      - "System"
+                      - "Security"
+        status_code: [200, 409]
+        validate_certs: false
+      register: windows_core_pkg
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "Attached fleet_server to Fleet Server policy (or it already existed)."
+          - "Attached system to SOC1 system policy (or it already existed)."
+          - "Attached zeek to SOC1 Zeek sensor policy (or it already existed)."
+          - "Attached system to Linux core policy (or it already existed)."
+          - "Attached winlog to Windows core policy (or it already existed)."
+

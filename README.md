@@ -46,7 +46,13 @@ ansible-playbook deploy_elastic.yaml -vv
 docker exec -it kib01 bin/kibana-verification-code
 ```
 
-- **Retrieve service token fleet server through UI**
+- **Create default policies and integrations for fleet server**
+
+```bash
+ansible-playbook policies_default.yaml -vv
+```
+
+- **Generate service token for fleet server through UI**
 
   - Paste into `fleet_server.yaml` playbook
 
