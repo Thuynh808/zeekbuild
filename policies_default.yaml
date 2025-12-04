@@ -5,7 +5,7 @@
   vars:
     kibana_base_url: "http://10.2.22.50:5601"
     # UPDATE ELASTIC PASSWORD
-    elastic_password: "sixpOR3iB4UXaRAKoZdD"
+    elastic_password: "RkRapWS-BQULpJ4=k8Tj"
 
   tasks:
     - name: Create Fleet Server agent policy
@@ -23,36 +23,13 @@
           name: "Fleet Server policy"
           id: "fleet-server-policy"
           namespace: "soc"
-          description: "Fleet Server control plane for SOC1"
+          description: "Fleet Server with Zeek control plane for SOC1"
           monitoring_enabled:
             - logs
             - metrics
         status_code: [200, 409]
         validate_certs: false
       register: fleet_server_policy
-
-    - name: Create SOC1 System and Zeek policy
-      ansible.builtin.uri:
-        url: "{{ kibana_base_url }}/api/fleet/agent_policies"
-        method: POST
-        headers:
-          kbn-xsrf: "true"
-          Content-Type: "application/json"
-        user: "elastic"
-        password: "{{ elastic_password }}"
-        force_basic_auth: true
-        body_format: json
-        body:
-          name: "SOC1 System and Zeek policy"
-          id: "soc1-system-zeek-policy"
-          namespace: "soc"
-          description: "System metrics/logs and zeek sensor policy for SOC1 host"
-          monitoring_enabled:
-            - logs
-            - metrics
-        status_code: [200, 409]
-        validate_certs: false
-      register: soc1_system_zeek_policy
 
     - name: Create Linux core policy
       ansible.builtin.uri:
@@ -193,7 +170,7 @@
         validate_certs: false
       register: fleet_server_pkg
 
-    - name: Attach system integration to SOC1 policy
+    - name: Attach system integration to fleet server policy
       ansible.builtin.uri:
         url: "{{ kibana_base_url }}/api/fleet/package_policies"
         method: POST
@@ -207,7 +184,7 @@
         body:
           name: "soc1-system-logs-metrics"
           namespace: "soc"
-          policy_id: "soc1-system-zeek-policy"
+          policy_id: "fleet-server-policy"
           package:
             name: "system"
             version: "{{ system_pkg_version }}"
@@ -215,7 +192,7 @@
         validate_certs: false
       register: soc1_system_pkg
 
-    - name: Attach zeek integration to SOC1 policy
+    - name: Attach zeek integration to fleet server policy
       ansible.builtin.uri:
         url: "{{ kibana_base_url }}/api/fleet/package_policies"
         method: POST
@@ -229,7 +206,7 @@
         body:
           name: "soc1-zeek"
           namespace: "soc"
-          policy_id: "soc1-system-zeek-policy"
+          policy_id: "fleet-server-policy"
           package:
             name: "zeek"
             version: "{{ zeek_pkg_version }}"

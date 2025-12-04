@@ -9,6 +9,12 @@
     elastic_data_dir: "/srv/elastic/data"
     elastic_logs_dir: "/srv/elastic/logs"
     elastic_ca_path: "/srv/elastic/http_ca.crt"
+    kibana_config_dir: "/srv/elastic/kibana-config"
+
+    # Canonical ES hostname and URL that EVERYTHING should use
+    # Make sure all your VMs can resolve this name to soc1 (e.g. /etc/hosts).
+    es_hostname: "es01"
+    es_https_url: "https://es01:9200"
 
     # Docker resource limits
     es_mem_limit: "12g"     # container limit
@@ -58,7 +64,7 @@
       ansible.builtin.file:
         path: "{{ elastic_data_dir }}"
         state: directory
-        owner: 1000       
+        owner: 1000
         group: 1000
         mode: "0755"
 
@@ -68,6 +74,14 @@
         state: directory
         owner: 1000
         group: 1000
+        mode: "0755"
+
+    - name: Ensure Kibana config dir exists
+      ansible.builtin.file:
+        path: "{{ kibana_config_dir }}"
+        state: directory
+        owner: root
+        group: root
         mode: "0755"
 
     # --- Network ---
@@ -82,7 +96,7 @@
     - name: Run Elasticsearch container (es01) - fresh single node
       community.docker.docker_container:
         name: es01
-        hostname: "es01"
+        hostname: "{{ es_hostname }}"
         image: "docker.elastic.co/elasticsearch/elasticsearch:{{ elastic_stack_version }}"
         state: started
         recreate: true        # force new container
@@ -95,7 +109,7 @@
           - "{{ elastic_data_dir }}:/usr/share/elasticsearch/data"
           - "{{ elastic_logs_dir }}:/usr/share/elasticsearch/logs"
         env:
-          # Don't touch security flags so auto-config can run
+          # Auto-security / TLS bootstrap
           discovery.type: "single-node"
           ES_JAVA_OPTS: "-Xms{{ es_heap_size }} -Xmx{{ es_heap_size }}"
         memory: "{{ es_mem_limit }}"
@@ -105,12 +119,12 @@
         url: "https://localhost:9200"
         method: GET
         validate_certs: false
-        status_code: [200, 401]   # tell Ansible these are OK
+        status_code: [200, 401]
       register: es_health
       until: es_health.status is defined and es_health.status in [200, 401]
       retries: 40
       delay: 5
-      failed_when: false          # don’t hard-fail on 401 while looping
+      failed_when: false
 
     # --- Grab CA cert from inside container ---
 
@@ -128,6 +142,17 @@
         owner: root
         group: root
         mode: "0644"
+
+    # --- Compute CA fingerprint ---
+
+    - name: Get ES CA SHA256 fingerprint
+      ansible.builtin.command: "openssl x509 -fingerprint -sha256 -noout -in {{ elastic_ca_path }}"
+      register: es_ca_fingerprint_raw
+      changed_when: false
+
+    - name: Extract ES CA fingerprint
+      ansible.builtin.set_fact:
+        es_ca_fingerprint: "{{ es_ca_fingerprint_raw.stdout.split('=')[1] | replace(':', '') | trim }}"
 
     # --- Password + enrollment token ---
 
@@ -152,6 +177,17 @@
     - name: Set Kibana enrollment token fact
       ansible.builtin.set_fact:
         kibana_enrollment_token: "{{ kibana_token_raw.stdout | trim }}"
+
+    - name: Create Kibana service account token
+      community.docker.docker_container_exec:
+        container: es01
+        command: "/usr/share/elasticsearch/bin/elasticsearch-service-tokens create elastic/kibana kibana-service-token"
+      register: kibana_service_token_raw
+      changed_when: false
+
+    - name: Extract Kibana service token
+      ansible.builtin.set_fact:
+        kibana_service_token: "{{ kibana_service_token_raw.stdout.split() | last }}"
 
     # --- Generate Kibana encryption keys via one-off container ---
 
@@ -193,6 +229,33 @@
              | trim
              | string }}
 
+    # --- Managed Kibana config (NO xpack.fleet.outputs here) ---
+
+    - name: Write Kibana config (kibana.yml) on host
+      ansible.builtin.copy:
+        dest: "{{ kibana_config_dir }}/kibana.yml"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          server.host: 0.0.0.0
+          server.shutdownTimeout: 5s
+          elasticsearch.hosts: ["{{ es_https_url }}"]
+          elasticsearch.ssl.certificateAuthorities:
+            - /usr/share/kibana/config/http_ca.crt
+          elasticsearch.ssl.verificationMode: full
+          elasticsearch.serviceAccountToken: "{{ kibana_service_token }}"
+          monitoring.ui.container.elasticsearch.enabled: true
+
+          xpack.fleet.outputs:
+            - id: fleet-default-output
+              name: default
+              type: elasticsearch
+              hosts: ["{{ es_https_url }}"]
+              is_default: true
+              is_default_monitoring: true
+              ca_trusted_fingerprint: "{{ es_ca_fingerprint }}"
+
     # --- Kibana container ---
 
     - name: Run Kibana container (kib01)
@@ -208,6 +271,9 @@
         published_ports:
           - "5601:5601"
         memory: "{{ kibana_mem_limit }}"
+        volumes:
+          - "{{ kibana_config_dir }}/kibana.yml:/usr/share/kibana/config/kibana.yml"
+          - "{{ elastic_ca_path }}:/usr/share/kibana/config/http_ca.crt:ro"
         env:
           # Encryption keys Kibana/Fleet requires
           XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "{{ xpack_encryptedSavedObjects_encryptionKey }}"
@@ -219,7 +285,8 @@
     - name: Show credentials and enrollment info
       ansible.builtin.debug:
         msg:
-          - "Elastic HTTPS endpoint: https://{{ ansible_host }}:9200"
+          - "Elastic HTTPS endpoint (canonical): {{ es_https_url }}"
+          - "  NOTE: Ensure all VMs resolve {{ es_hostname }} to soc1 (e.g. /etc/hosts: 10.2.22.50 {{ es_hostname }})"
           - "Kibana URL:          http://{{ ansible_host }}:5601"
           - "CA certificate path on host: {{ elastic_ca_path }}"
           - "Elastic username:    elastic"
@@ -227,8 +294,9 @@
           - "Kibana enrollment token:"
           - "{{ kibana_enrollment_token }}"
       register: output
-    
-    - name: output to file
-      copy:
+
+    - name: Output to file
+      ansible.builtin.copy:
         dest: /root/output
         content: "{{ output }}"
+

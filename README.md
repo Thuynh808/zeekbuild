@@ -37,14 +37,8 @@ ansible-playbook tune-zeek.yaml -vv
 ansible-playbook deploy_elastic.yaml -vv
 ```
 
-- **Configure Elastic/Kibana**
+- **Sign in with elastic pw Elastic/Kibana**
 
-  - Enroll with token through UI
-  - Run command on soc1 to retrieve verification code
-
-```bash
-docker exec -it kib01 bin/kibana-verification-code
-```
 - **Update pw for policy playbook**
 
 ```bash
@@ -57,13 +51,6 @@ vim policies_default.yaml
 ansible-playbook policies_default.yaml -vv
 ```
 
-- **Generate service token for fleet server through UI**
+- **Add fleet server through UI**
 
-  - Paste into `fleet_server.yaml` playbook
-
-- **Deploy fleet server container**
-
-```bash
-ansible-playbook fleet_server.yaml -vv
-```
-
+- **Add Agents through UI**
