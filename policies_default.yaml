@@ -5,7 +5,7 @@
   vars:
     kibana_base_url: "http://10.2.22.50:5601"
     # UPDATE ELASTIC PASSWORD
-    elastic_password: "RkRapWS-BQULpJ4=k8Tj"
+    elastic_password: "XXXXXXXXXXXXXX"
 
   tasks:
     - name: Create Fleet Server agent policy

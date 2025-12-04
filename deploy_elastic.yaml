@@ -1,5 +1,5 @@
 ---
-- name: Deploy single-node Elasticsearch + Kibana on SOC1 (fresh install)
+- name: Deploy single-node Elasticsearch + Kibana on SOC1
   hosts: soc1
   become: true
   vars:
@@ -11,8 +11,6 @@
     elastic_ca_path: "/srv/elastic/http_ca.crt"
     kibana_config_dir: "/srv/elastic/kibana-config"
 
-    # Canonical ES hostname and URL that EVERYTHING should use
-    # Make sure all your VMs can resolve this name to soc1 (e.g. /etc/hosts).
     es_hostname: "es01"
     es_https_url: "https://es01:9200"
 
@@ -20,7 +18,6 @@
     es_mem_limit: "12g"     # container limit
     kibana_mem_limit: "2g"
 
-    # JVM heap inside Elasticsearch
     es_heap_size: "8g"
 
   pre_tasks:
@@ -37,7 +34,7 @@
         reload: yes
 
   tasks:
-    # --- Fresh install cleanup (danger: wipes any existing ES data) ---
+    # --- Fresh install cleanup ---
     - name: Remove existing Elasticsearch container es01 (if present)
       community.docker.docker_container:
         name: es01
@@ -99,7 +96,7 @@
         hostname: "{{ es_hostname }}"
         image: "docker.elastic.co/elasticsearch/elasticsearch:{{ elastic_stack_version }}"
         state: started
-        recreate: true        # force new container
+        recreate: true
         restart_policy: unless-stopped
         networks:
           - name: elastic
@@ -109,7 +106,6 @@
           - "{{ elastic_data_dir }}:/usr/share/elasticsearch/data"
           - "{{ elastic_logs_dir }}:/usr/share/elasticsearch/logs"
         env:
-          # Auto-security / TLS bootstrap
           discovery.type: "single-node"
           ES_JAVA_OPTS: "-Xms{{ es_heap_size }} -Xmx{{ es_heap_size }}"
         memory: "{{ es_mem_limit }}"
@@ -189,7 +185,7 @@
       ansible.builtin.set_fact:
         kibana_service_token: "{{ kibana_service_token_raw.stdout.split() | last }}"
 
-    # --- Generate Kibana encryption keys via one-off container ---
+    # --- Generate Kibana encryption keys ---
 
     - name: Generate Kibana encryption keys (one-off container)
       ansible.builtin.shell: >
